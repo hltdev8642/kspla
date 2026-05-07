@@ -226,6 +226,73 @@
       animation: reveal 760ms ease both;
     }
 
+    .tools-advanced {
+      grid-template-columns: repeat(4, minmax(140px, 1fr));
+      animation: reveal 820ms ease both;
+    }
+
+    .timeline {
+      background: linear-gradient(145deg, rgba(19, 34, 54, 0.95), rgba(13, 22, 36, 0.95));
+      border: 1px solid #30506f;
+      border-radius: var(--radius);
+      padding: 12px;
+      display: grid;
+      gap: 9px;
+      animation: reveal 900ms ease both;
+    }
+
+    .timeline-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .timeline-list {
+      max-height: 240px;
+      overflow: auto;
+      display: grid;
+      gap: 7px;
+    }
+
+    .timeline-item {
+      border: 1px solid #2c4c6b;
+      border-radius: 10px;
+      background: #111f33;
+      padding: 8px;
+      display: grid;
+      gap: 4px;
+    }
+
+    .timeline-line {
+      color: var(--muted);
+      font-size: 0.8rem;
+    }
+
+    .parser-diag {
+      background: linear-gradient(145deg, rgba(20, 35, 54, 0.95), rgba(13, 22, 36, 0.95));
+      border: 1px solid #2f4e6d;
+      border-radius: var(--radius);
+      padding: 12px;
+      display: grid;
+      gap: 8px;
+    }
+
+    .parser-raw {
+      border: 1px solid #2e4f6f;
+      border-radius: 8px;
+      background: #0d1828;
+      color: #c8dcfa;
+      padding: 8px;
+      font-size: 0.78rem;
+      font-family: var(--mono);
+      max-height: 180px;
+      overflow: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
     .input,
     select,
     textarea {
@@ -561,8 +628,8 @@
 
     <section class="tools">
       <input id="searchInput" class="input" type="text" placeholder="Search issues by keyword, exception, mod name, assembly, part..." />
-      <select id="categoryFilter">
-        <option value="all">All categories</option>
+      <select id="focusFilter">
+        <option value="all">All parsed signals</option>
       </select>
       <select id="severityFilter">
         <option value="all">All severities</option>
@@ -574,10 +641,34 @@
       <button id="resetFiltersBtn">Reset Filters</button>
     </section>
 
+    <section class="tools tools-advanced">
+      <input id="minOccurrences" class="input" type="number" min="1" step="1" placeholder="Min occurrences (e.g. 2)" />
+      <input id="lineStart" class="input" type="number" min="1" step="1" placeholder="Start line" />
+      <input id="lineEnd" class="input" type="number" min="1" step="1" placeholder="End line" />
+      <button id="clearAdvancedBtn">Clear Advanced</button>
+    </section>
+
     <section class="diag" id="diagnosisPanel">
       <h2>Crash Diagnosis</h2>
       <p id="diagnosisSummary">Load a log to generate a probable root cause and remediation steps.</p>
       <ul id="diagnosisActions"></ul>
+    </section>
+
+    <section class="timeline" id="timelinePanel">
+      <div class="timeline-head">
+        <h2 style="margin:0; font-size:1.03rem;">Issue Timeline</h2>
+        <div class="status" id="timelineStats">No timeline data yet.</div>
+      </div>
+      <div class="timeline-list" id="timelineList"></div>
+    </section>
+
+    <section class="parser-diag" id="parserDiagPanel">
+      <h2 style="margin:0; font-size:1.03rem;">Parser Diagnostics</h2>
+      <div class="status" id="parserDiagText">No parser diagnostics yet.</div>
+      <details>
+        <summary>Details</summary>
+        <pre id="parserDiagRaw" class="parser-raw">(none)</pre>
+      </details>
     </section>
 
     <section class="issue-panels" id="issuePanels"></section>
@@ -689,9 +780,23 @@
         "warnings"
       ];
 
+      const FOCUS_FILTERS = [
+        { value: "all", label: "All parsed signals" },
+        { value: "memory-pressure", label: "Memory pressure" },
+        { value: "stack-overflow", label: "Stack overflow" },
+        { value: "mod-conflict", label: "Mod conflicts" },
+        { value: "missing-asset", label: "Missing assets" },
+        { value: "has-exception", label: "Has exception type" },
+        { value: "has-assembly", label: "Has assembly name" },
+        { value: "has-asset-path", label: "Has asset path" },
+        { value: "has-part", label: "Has part name" },
+        { value: "has-mod-hints", label: "Has mod hints" }
+      ];
+
       const state = {
         settings: loadSettings(),
         issues: [],
+        filteredIssues: [],
         totals: {
           exceptions: 0,
           errors: 0,
@@ -699,6 +804,7 @@
           crash_indicators: 0
         },
         diagnosis: { verdict: "No Data", summary: "", actions: [] },
+        workerDiagnostics: { summary: "No parser diagnostics yet.", raw: "" },
         fileName: "",
         lineCount: 0,
         worker: null
@@ -722,9 +828,17 @@
 
         issuePanels: document.getElementById("issuePanels"),
         searchInput: document.getElementById("searchInput"),
-        categoryFilter: document.getElementById("categoryFilter"),
+        focusFilter: document.getElementById("focusFilter"),
         severityFilter: document.getElementById("severityFilter"),
         resetFiltersBtn: document.getElementById("resetFiltersBtn"),
+        minOccurrences: document.getElementById("minOccurrences"),
+        lineStart: document.getElementById("lineStart"),
+        lineEnd: document.getElementById("lineEnd"),
+        clearAdvancedBtn: document.getElementById("clearAdvancedBtn"),
+        timelineList: document.getElementById("timelineList"),
+        timelineStats: document.getElementById("timelineStats"),
+        parserDiagText: document.getElementById("parserDiagText"),
+        parserDiagRaw: document.getElementById("parserDiagRaw"),
         copyReportBtn: document.getElementById("copyReportBtn"),
 
         openSettingsBtn: document.getElementById("openSettingsBtn"),
@@ -744,7 +858,7 @@
 
       function init() {
         applySettingsToUi();
-        setupCategoryFilter();
+        setupFocusFilter();
         wireEvents();
         render();
       }
@@ -780,13 +894,23 @@
         });
 
         el.searchInput.addEventListener("input", renderIssuePanels);
-        el.categoryFilter.addEventListener("change", renderIssuePanels);
+        el.focusFilter.addEventListener("change", renderIssuePanels);
         el.severityFilter.addEventListener("change", renderIssuePanels);
+        el.minOccurrences.addEventListener("input", renderIssuePanels);
+        el.lineStart.addEventListener("input", renderIssuePanels);
+        el.lineEnd.addEventListener("input", renderIssuePanels);
 
         el.resetFiltersBtn.addEventListener("click", () => {
           el.searchInput.value = "";
-          el.categoryFilter.value = "all";
+          el.focusFilter.value = "all";
           el.severityFilter.value = "all";
+          renderIssuePanels();
+        });
+
+        el.clearAdvancedBtn.addEventListener("click", () => {
+          el.minOccurrences.value = "";
+          el.lineStart.value = "";
+          el.lineEnd.value = "";
           renderIssuePanels();
         });
 
@@ -821,12 +945,12 @@
         });
       }
 
-      function setupCategoryFilter() {
-        for (const key of CATEGORY_ORDER) {
+      function setupFocusFilter() {
+        for (const key of FOCUS_FILTERS) {
           const opt = document.createElement("option");
-          opt.value = key;
-          opt.textContent = CATEGORY_META[key].label;
-          el.categoryFilter.appendChild(opt);
+          opt.value = key.value;
+          opt.textContent = key.label;
+          el.focusFilter.appendChild(opt);
         }
       }
 
@@ -880,8 +1004,13 @@
         resetAnalysisState();
 
         state.fileName = file.name;
+        state.workerDiagnostics = {
+          summary: "Worker started: parsing in progress.",
+          raw: ""
+        };
         setStatus(`Analyzing ${file.name}...`);
         el.progressBar.style.width = "0%";
+        renderParserDiagnostics();
 
         state.worker = createParserWorker();
 
@@ -900,8 +1029,13 @@
 
           if (data.type === "done") {
             state.issues = data.issues || [];
+            state.filteredIssues = state.issues.slice();
             state.totals = data.totals || state.totals;
             state.lineCount = Number(data.lineCount || 0);
+            state.workerDiagnostics = {
+              summary: data.decodeSummary || "Parser completed successfully.",
+              raw: data.decodeDetails || ""
+            };
             state.diagnosis = createDiagnosis(state.issues, state.totals, state.settings);
 
             el.progressBar.style.width = "100%";
@@ -912,14 +1046,30 @@
           }
 
           if (data.type === "error") {
+            state.workerDiagnostics = {
+              summary: `Parser error: ${data.message || "Unknown error"}`,
+              raw: data.stack || ""
+            };
             setStatus(`Parsing failed: ${data.message || "Unknown error"}`);
+            renderParserDiagnostics();
             stopWorkerIfRunning();
           }
         };
 
         state.worker.onerror = (err) => {
           console.error("Worker error", err);
+          const details = [
+            `message: ${err && err.message ? err.message : "(none)"}`,
+            `filename: ${err && err.filename ? err.filename : "(none)"}`,
+            `lineno: ${err && Number.isFinite(err.lineno) ? err.lineno : "(none)"}`,
+            `colno: ${err && Number.isFinite(err.colno) ? err.colno : "(none)"}`
+          ].join("\n");
+          state.workerDiagnostics = {
+            summary: "Worker failed while parsing the file.",
+            raw: details
+          };
           setStatus("Worker failed while parsing the file.");
+          renderParserDiagnostics();
           stopWorkerIfRunning();
         };
 
@@ -939,12 +1089,14 @@
 
       function resetAnalysisState() {
         state.issues = [];
+        state.filteredIssues = [];
         state.totals = {
           exceptions: 0,
           errors: 0,
           warnings: 0,
           crash_indicators: 0
         };
+        state.workerDiagnostics = { summary: "No parser diagnostics yet.", raw: "" };
         state.diagnosis = { verdict: "No Data", summary: "", actions: [] };
         state.fileName = "";
         state.lineCount = 0;
@@ -955,7 +1107,13 @@
         renderSummary();
         renderDiagnosis();
         renderIssuePanels();
+        renderParserDiagnostics();
         el.copyReportBtn.disabled = state.issues.length === 0;
+      }
+
+      function renderParserDiagnostics() {
+        el.parserDiagText.textContent = state.workerDiagnostics.summary || "No parser diagnostics yet.";
+        el.parserDiagRaw.textContent = state.workerDiagnostics.raw || "(none)";
       }
 
       function renderSummary() {
@@ -987,6 +1145,7 @@
 
       function renderIssuePanels() {
         const filtered = filterIssues(state.issues);
+        state.filteredIssues = filtered;
         const byCategory = groupBy(filtered, (x) => x.category);
         el.issuePanels.innerHTML = "";
 
@@ -1019,6 +1178,35 @@
           details.appendChild(list);
           el.issuePanels.appendChild(details);
         }
+
+        renderTimeline(filtered);
+      }
+
+      function renderTimeline(filteredIssues) {
+        const list = (filteredIssues || [])
+          .slice()
+          .sort((a, b) => a.firstLine - b.firstLine || b.count - a.count)
+          .slice(0, 120);
+
+        el.timelineList.innerHTML = "";
+        if (!list.length) {
+          const empty = document.createElement("div");
+          empty.className = "timeline-item";
+          empty.textContent = "No timeline events match the current filters.";
+          el.timelineList.appendChild(empty);
+          el.timelineStats.textContent = "0 events";
+          return;
+        }
+
+        for (const issue of list) {
+          const item = document.createElement("div");
+          item.className = "timeline-item";
+          const categoryLabel = CATEGORY_META[issue.category] ? CATEGORY_META[issue.category].label : issue.category;
+          item.innerHTML = `<div><span class="badge sev-${issue.severity}">${escapeHtml(issue.severity.toUpperCase())}</span>${escapeHtml(issue.message.slice(0, 160))}${issue.message.length > 160 ? "..." : ""}</div><div class="timeline-line">Line ${issue.firstLine} | ${escapeHtml(categoryLabel)} | ${issue.count} occurrence(s)</div>`;
+          el.timelineList.appendChild(item);
+        }
+
+        el.timelineStats.textContent = `${list.length.toLocaleString()} event(s) shown`;
       }
 
       function renderIssue(issue) {
@@ -1047,10 +1235,26 @@
 
         const meta = document.createElement("div");
         meta.className = "issue-meta";
-        meta.innerHTML = `<span>Line: ${issue.firstLine}</span><span>Occurrences: ${issue.count}</span><span>Category: ${escapeHtml(CATEGORY_META[issue.category].label)}</span>`;
+        const hints = issue.modHints && issue.modHints.length ? ` | Mod hints: ${issue.modHints.join(", ")}` : "";
+        meta.innerHTML = `<span>Line: ${issue.firstLine}</span><span>Occurrences: ${issue.count}</span><span>Category: ${escapeHtml(CATEGORY_META[issue.category].label)}${escapeHtml(hints)}</span>`;
 
         item.appendChild(top);
         item.appendChild(meta);
+
+        if (issue.details && Object.keys(issue.details).length) {
+          const detailsText = [];
+          if (issue.details.exceptionType) detailsText.push(`Exception: ${issue.details.exceptionType}`);
+          if (issue.details.assetPath) detailsText.push(`Asset: ${issue.details.assetPath}`);
+          if (issue.details.assembly) detailsText.push(`Assembly: ${issue.details.assembly}`);
+          if (issue.details.partName) detailsText.push(`Part: ${issue.details.partName}`);
+          if (issue.details.signal) detailsText.push(`Signal: ${issue.details.signal}`);
+          if (detailsText.length) {
+            const parsed = document.createElement("div");
+            parsed.className = "issue-meta";
+            parsed.textContent = detailsText.join(" | ");
+            item.appendChild(parsed);
+          }
+        }
 
         const contextDetails = document.createElement("details");
         const contextSummary = document.createElement("summary");
@@ -1070,23 +1274,50 @@
 
       function filterIssues(issues) {
         const q = el.searchInput.value.trim().toLowerCase();
-        const cat = el.categoryFilter.value;
+        const focus = el.focusFilter.value;
         const sev = el.severityFilter.value;
+        const minOccurrences = Math.max(1, Number(el.minOccurrences.value || 1));
+        const lineStart = Number(el.lineStart.value || 0);
+        const lineEnd = Number(el.lineEnd.value || 0);
 
         return issues.filter((issue) => {
-          if (cat !== "all" && issue.category !== cat) return false;
           if (sev !== "all" && issue.severity !== sev) return false;
+          if ((issue.count || 0) < minOccurrences) return false;
+          if (lineStart > 0 && Number(issue.firstLine || 0) < lineStart) return false;
+          if (lineEnd > 0 && Number(issue.firstLine || 0) > lineEnd) return false;
+          if (!matchesFocusFilter(issue, focus)) return false;
 
           if (!q) return true;
 
           const hay = [
             issue.message,
             CATEGORY_META[issue.category].label,
+            issue.modHints ? issue.modHints.join(" ") : "",
+            issue.details ? Object.values(issue.details).join(" ") : "",
             ...(issue.contexts || []).map((c) => c.text)
           ].join("\n").toLowerCase();
 
           return hay.includes(q);
         });
+      }
+
+      function matchesFocusFilter(issue, focus) {
+        if (focus === "all") return true;
+
+        const details = issue.details || {};
+        const modHints = issue.modHints || [];
+
+        if (focus === "memory-pressure") return details.signal === "memory-pressure";
+        if (focus === "stack-overflow") return details.signal === "stack-overflow";
+        if (focus === "mod-conflict") return details.signal === "mod-conflict" || issue.category === "mod_conflicts";
+        if (focus === "missing-asset") return details.signal === "missing-asset" || issue.category === "missing_assets";
+        if (focus === "has-exception") return Boolean(details.exceptionType);
+        if (focus === "has-assembly") return Boolean(details.assembly);
+        if (focus === "has-asset-path") return Boolean(details.assetPath);
+        if (focus === "has-part") return Boolean(details.partName);
+        if (focus === "has-mod-hints") return modHints.length > 0;
+
+        return true;
       }
 
       function createDiagnosis(issues, totals, settings) {
@@ -1227,6 +1458,8 @@
           `Severity: ${issue.severity}`,
           `Line: ${issue.firstLine}`,
           `Occurrences: ${issue.count}`,
+          issue.modHints && issue.modHints.length ? `Mod Hints: ${issue.modHints.join(", ")}` : "",
+          issue.details ? `Parsed Details: ${JSON.stringify(issue.details)}` : "",
           "Message:",
           issue.message,
           "",
@@ -1259,6 +1492,10 @@
 
         lines.push("Diagnosis:");
         lines.push(state.diagnosis.summary || "No diagnosis.");
+        lines.push("");
+        lines.push("Parser Diagnostics:");
+        lines.push(state.workerDiagnostics.summary || "");
+        if (state.workerDiagnostics.raw) lines.push(state.workerDiagnostics.raw);
         lines.push("");
         for (const action of state.diagnosis.actions || []) {
           lines.push(`- ${action}`);
@@ -1328,12 +1565,50 @@
             } catch (err) {
               self.postMessage({
                 type: "error",
-                message: err && err.message ? err.message : String(err)
+                message: err && err.message ? err.message : String(err),
+                stack: err && err.stack ? err.stack : ""
               });
             }
           };
 
           async function parseFile(file, settings) {
+            const attempts = ["utf-8", "windows-1252", "iso-8859-1"];
+            const diagnostics = [];
+            let best = null;
+
+            for (let i = 0; i < attempts.length; i++) {
+              const encoding = attempts[i];
+              try {
+                const run = await parseWithEncoding(file, settings, encoding);
+                diagnostics.push(
+                  "encoding=" + encoding +
+                  " lines=" + run.lineCount +
+                  " replacementRatio=" + run.replacementRatio.toFixed(4) +
+                  " issues=" + run.issues.length
+                );
+
+                if (!best || run.replacementRatio < best.replacementRatio) {
+                  best = run;
+                }
+
+                if (run.replacementRatio < 0.003) {
+                  break;
+                }
+              } catch (err) {
+                diagnostics.push("encoding=" + encoding + " failed=" + (err && err.message ? err.message : String(err)));
+              }
+            }
+
+            if (!best) {
+              throw new Error("All decoding strategies failed.");
+            }
+
+            best.decodeSummary = "Parser completed using " + best.encoding + " (replacement ratio " + best.replacementRatio.toFixed(4) + ").";
+            best.decodeDetails = diagnostics.join("\n");
+            return best;
+          }
+
+          async function parseWithEncoding(file, settings, encoding) {
             const contextLines = Math.max(1, Math.min(8, Number(settings.contextLines || 3)));
             const maxContexts = Math.max(1, Math.min(8, Number(settings.maxContexts || 3)));
             const sensitivity = String(settings.sensitivity || "normal").toLowerCase();
@@ -1351,17 +1626,23 @@
             let carry = "";
             let lineNo = 0;
             let bytesRead = 0;
+            let replacementChars = 0;
+            let decodedChars = 0;
             const totalBytes = file.size || 1;
 
             const reader = file.stream().getReader();
-            const decoder = new TextDecoder("utf-8", { fatal: false });
+            const decoder = new TextDecoder(encoding, { fatal: false });
 
             while (true) {
-              const { value, done } = await reader.read();
-              if (done) break;
+              const chunk = await reader.read();
+              if (chunk.done) break;
 
+              const value = chunk.value;
               bytesRead += value.byteLength;
-              carry += decoder.decode(value, { stream: true });
+              const decoded = decoder.decode(value, { stream: true });
+              replacementChars += countReplacement(decoded);
+              decodedChars += decoded.length;
+              carry += decoded;
 
               const lines = carry.split(/\r?\n/);
               carry = lines.pop() || "";
@@ -1379,7 +1660,11 @@
               }
             }
 
-            carry += decoder.decode();
+            const flushed = decoder.decode();
+            replacementChars += countReplacement(flushed);
+            decodedChars += flushed.length;
+            carry += flushed;
+
             if (carry.length > 0) {
               processLine(carry);
             }
@@ -1387,22 +1672,32 @@
             flushPending();
 
             const issues = Array.from(issueMap.values())
-              .map((issue) => ({
-                id: issue.id,
-                key: issue.key,
-                category: issue.category,
-                severity: issue.severity,
-                message: issue.message,
-                firstLine: issue.firstLine,
-                count: issue.count,
-                contexts: issue.contexts
-              }))
-              .sort((a, b) => severityWeight(b.severity) - severityWeight(a.severity) || b.count - a.count || a.firstLine - b.firstLine);
+              .map(function (issue) {
+                return {
+                  id: issue.id,
+                  key: issue.key,
+                  category: issue.category,
+                  severity: issue.severity,
+                  message: issue.message,
+                  firstLine: issue.firstLine,
+                  count: issue.count,
+                  details: issue.details,
+                  modHints: issue.modHints,
+                  contexts: issue.contexts
+                };
+              })
+              .sort(function (a, b) {
+                return severityWeight(b.severity) - severityWeight(a.severity) || b.count - a.count || a.firstLine - b.firstLine;
+              });
+
+            const replacementRatio = decodedChars > 0 ? (replacementChars / decodedChars) : 0;
 
             return {
-              issues,
-              totals,
-              lineCount: lineNo
+              issues: issues,
+              totals: totals,
+              lineCount: lineNo,
+              replacementRatio: replacementRatio,
+              encoding: encoding
             };
 
             function processLine(line) {
@@ -1428,27 +1723,34 @@
               const match = detectIssue(text, sensitivity);
               if (match) {
                 const key = buildIssueKey(match.category, text);
+                const detailInfo = extractDetails(text, match.category);
+                const hints = extractModHints(text);
                 let issue = issueMap.get(key);
 
                 if (!issue) {
                   issue = {
                     id: issueMap.size + 1,
-                    key,
+                    key: key,
                     category: match.category,
                     severity: match.severity,
                     message: text.trim().slice(0, 2000),
                     firstLine: lineNo,
                     count: 0,
+                    details: detailInfo,
+                    modHints: hints,
                     contexts: []
                   };
                   issueMap.set(key, issue);
+                } else {
+                  issue.details = mergeDetails(issue.details, detailInfo);
+                  issue.modHints = mergeHints(issue.modHints, hints);
                 }
 
                 issue.count++;
                 bumpTotals(totals, match.category);
 
                 if (issue.contexts.length < maxContexts) {
-                  const blockLines = prevLines.slice(-contextLines).map((x) => x.text);
+                  const blockLines = prevLines.slice(-contextLines).map(function (x) { return x.text; });
                   blockLines.push(formatLine(lineNo, text));
                   pendingContexts.push({
                     issueKey: key,
@@ -1459,7 +1761,7 @@
               }
 
               prevLines.push({
-                lineNo,
+                lineNo: lineNo,
                 text: formatLine(lineNo, text)
               });
 
@@ -1512,6 +1814,68 @@
               .slice(0, 260);
 
             return category + "::" + normalized;
+          }
+
+          function countReplacement(text) {
+            let c = 0;
+            for (let i = 0; i < text.length; i++) {
+              if (text.charCodeAt(i) === 65533) c++;
+            }
+            return c;
+          }
+
+          function mergeHints(existing, incoming) {
+            const set = new Set((existing || []).concat(incoming || []));
+            return Array.from(set).slice(0, 8);
+          }
+
+          function mergeDetails(a, b) {
+            const out = Object.assign({}, a || {});
+            const incoming = b || {};
+            const keys = Object.keys(incoming);
+            for (let i = 0; i < keys.length; i++) {
+              const key = keys[i];
+              if (!out[key] && incoming[key]) out[key] = incoming[key];
+            }
+            return out;
+          }
+
+          function extractModHints(text) {
+            const hints = [];
+            const regs = [
+              /GameData[\\\/]+([A-Za-z0-9_.-]+)/i,
+              /([A-Za-z0-9_.-]+)\.dll\b/i,
+              /\[([A-Za-z0-9_.-]{3,})\]/,
+              /mod\s+([A-Za-z0-9_.-]{3,})/i,
+              /patch\s+([A-Za-z0-9_.-]{3,})/i
+            ];
+
+            for (let i = 0; i < regs.length; i++) {
+              const m = text.match(regs[i]);
+              if (m && m[1]) hints.push(m[1]);
+            }
+
+            return Array.from(new Set(hints)).slice(0, 8);
+          }
+
+          function extractDetails(text, category) {
+            const details = {};
+            const exceptionMatch = text.match(/\b([A-Za-z]+Exception)\b/);
+            const assemblyMatch = text.match(/\b([A-Za-z0-9_.-]+\.dll)\b/i);
+            const assetMatch = text.match(/\b((?:GameData|PluginData|Assets)[\\\/][^\s"']+)\b/i);
+            const partMatch = text.match(/\bPart\s+['"]?([A-Za-z0-9_.-]+)/i);
+
+            if (exceptionMatch) details.exceptionType = exceptionMatch[1];
+            if (assemblyMatch) details.assembly = assemblyMatch[1];
+            if (assetMatch) details.assetPath = assetMatch[1];
+            if (partMatch) details.partName = partMatch[1];
+
+            if (/outofmemory|out of memory|allocation failed/i.test(text)) details.signal = "memory-pressure";
+            else if (/stack ?overflow/i.test(text)) details.signal = "stack-overflow";
+            else if (/duplicate|already loaded|version mismatch/i.test(text)) details.signal = "mod-conflict";
+            else if (/not found|missing/i.test(text) && category === "missing_assets") details.signal = "missing-asset";
+
+            return details;
           }
 
           function detectIssue(line, sensitivity) {
