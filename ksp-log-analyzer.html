@@ -1,0 +1,1560 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>KSP Log Analyzer</title>
+  <style>
+    :root {
+      --bg-0: #090e14;
+      --bg-1: #0f1724;
+      --bg-2: #132033;
+      --panel: #111a28;
+      --panel-2: #0e1623;
+      --text: #d7e6ff;
+      --muted: #8ba2c7;
+      --cyan: #2dd4df;
+      --orange: #ff9f43;
+      --red: #ff5f6d;
+      --yellow: #ffd166;
+      --blue: #66b3ff;
+      --green: #64d98a;
+      --border: #234059;
+      --shadow: 0 12px 36px rgba(0, 0, 0, 0.35);
+      --radius: 14px;
+      --mono: "Cascadia Code", "Consolas", "SFMono-Regular", Menlo, monospace;
+      --sans: "Segoe UI", "Noto Sans", "Helvetica Neue", Arial, sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      margin: 0;
+      min-height: 100%;
+      background:
+        radial-gradient(circle at 8% 12%, rgba(45, 212, 223, 0.14), transparent 34%),
+        radial-gradient(circle at 88% 20%, rgba(255, 159, 67, 0.12), transparent 30%),
+        radial-gradient(circle at 60% 82%, rgba(102, 179, 255, 0.1), transparent 36%),
+        linear-gradient(180deg, var(--bg-0), #08101a 65%);
+      color: var(--text);
+      font-family: var(--sans);
+    }
+
+    .stars {
+      pointer-events: none;
+      position: fixed;
+      inset: 0;
+      background-image:
+        radial-gradient(2px 2px at 10% 20%, rgba(255, 255, 255, 0.28), transparent),
+        radial-gradient(2px 2px at 24% 72%, rgba(255, 255, 255, 0.2), transparent),
+        radial-gradient(1.5px 1.5px at 72% 16%, rgba(255, 255, 255, 0.24), transparent),
+        radial-gradient(1.5px 1.5px at 86% 64%, rgba(255, 255, 255, 0.22), transparent),
+        radial-gradient(2px 2px at 54% 44%, rgba(255, 255, 255, 0.18), transparent);
+      opacity: 0.7;
+      z-index: 0;
+      animation: drift 18s linear infinite;
+    }
+
+    @keyframes drift {
+      0% { transform: translateY(0px); }
+      50% { transform: translateY(8px); }
+      100% { transform: translateY(0px); }
+    }
+
+    .app {
+      position: relative;
+      z-index: 1;
+      width: min(1200px, 94vw);
+      margin: 24px auto 44px;
+      display: grid;
+      gap: 16px;
+    }
+
+    .header {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      background: linear-gradient(135deg, rgba(23, 35, 55, 0.94), rgba(16, 26, 41, 0.92));
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px 18px;
+      box-shadow: var(--shadow);
+      animation: reveal 420ms ease both;
+    }
+
+    @keyframes reveal {
+      from {
+        opacity: 0;
+        transform: translateY(8px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    h1 {
+      margin: 0;
+      letter-spacing: 0.4px;
+      font-size: clamp(1.15rem, 1vw + 1rem, 1.6rem);
+      font-weight: 700;
+    }
+
+    .subtitle {
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 0.93rem;
+    }
+
+    .header-buttons {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    button,
+    .button {
+      background: #102238;
+      color: var(--text);
+      border: 1px solid #2a5075;
+      border-radius: 10px;
+      padding: 9px 12px;
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 0.9rem;
+      transition: transform 120ms ease, background 160ms ease, border-color 180ms ease;
+    }
+
+    button:hover,
+    .button:hover {
+      background: #16304c;
+      border-color: #3c709f;
+      transform: translateY(-1px);
+    }
+
+    button:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .primary {
+      background: linear-gradient(135deg, #164f63, #17425d);
+      border-color: #33a9be;
+    }
+
+    .primary:hover {
+      background: linear-gradient(135deg, #1a6078, #1d5171);
+      border-color: #4ac8d8;
+    }
+
+    .dropzone {
+      background: linear-gradient(145deg, rgba(17, 31, 49, 0.93), rgba(14, 23, 37, 0.95));
+      border: 2px dashed #2f658f;
+      border-radius: var(--radius);
+      padding: 20px;
+      display: grid;
+      gap: 10px;
+      text-align: center;
+      transition: border-color 180ms ease, transform 180ms ease, background 180ms ease;
+      box-shadow: var(--shadow);
+      animation: reveal 520ms ease both;
+    }
+
+    .dropzone.active {
+      border-color: var(--cyan);
+      background: linear-gradient(145deg, rgba(20, 41, 60, 0.98), rgba(13, 24, 39, 0.98));
+      transform: translateY(-1px);
+    }
+
+    .drop-title {
+      font-size: 1.03rem;
+      font-weight: 700;
+    }
+
+    .drop-note {
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
+    .dashboard {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(120px, 1fr));
+      gap: 10px;
+      animation: reveal 640ms ease both;
+    }
+
+    .card {
+      background: linear-gradient(160deg, var(--panel), var(--panel-2));
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px;
+      min-height: 78px;
+      display: grid;
+      gap: 6px;
+      align-content: center;
+    }
+
+    .label {
+      color: var(--muted);
+      font-size: 0.82rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .value {
+      font-size: 1.35rem;
+      font-weight: 800;
+    }
+
+    .value.red { color: var(--red); }
+    .value.yellow { color: var(--yellow); }
+    .value.blue { color: var(--blue); }
+    .value.green { color: var(--green); }
+    .value.cyan { color: var(--cyan); }
+
+    .tools {
+      display: grid;
+      grid-template-columns: 2fr 1fr 1fr auto;
+      gap: 10px;
+      align-items: center;
+      animation: reveal 760ms ease both;
+    }
+
+    .input,
+    select,
+    textarea {
+      width: 100%;
+      background: #0f1b2c;
+      color: var(--text);
+      border: 1px solid #2b4d6d;
+      border-radius: 10px;
+      padding: 10px;
+      font-size: 0.92rem;
+      outline: none;
+    }
+
+    .input:focus,
+    select:focus,
+    textarea:focus {
+      border-color: #46afc4;
+      box-shadow: 0 0 0 2px rgba(45, 212, 223, 0.18);
+    }
+
+    .diag {
+      background: linear-gradient(145deg, rgba(19, 36, 56, 0.95), rgba(14, 24, 39, 0.95));
+      border: 1px solid #315170;
+      border-radius: var(--radius);
+      padding: 14px;
+      display: grid;
+      gap: 10px;
+      animation: reveal 860ms ease both;
+    }
+
+    .diag h2 {
+      margin: 0;
+      font-size: 1.03rem;
+    }
+
+    .diag p {
+      margin: 0;
+      color: #c7daf7;
+      line-height: 1.45;
+      font-size: 0.94rem;
+    }
+
+    .diag ul {
+      margin: 0;
+      padding-left: 18px;
+      color: #d7e6ff;
+      display: grid;
+      gap: 5px;
+      font-size: 0.93rem;
+    }
+
+    .badge {
+      display: inline-block;
+      border-radius: 999px;
+      font-size: 0.74rem;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      padding: 3px 8px;
+      vertical-align: middle;
+      margin-right: 6px;
+      border: 1px solid transparent;
+    }
+
+    .sev-critical {
+      color: #ffd9dc;
+      background: rgba(255, 95, 109, 0.18);
+      border-color: rgba(255, 95, 109, 0.35);
+    }
+
+    .sev-error {
+      color: #ffd7d9;
+      background: rgba(255, 95, 109, 0.14);
+      border-color: rgba(255, 95, 109, 0.33);
+    }
+
+    .sev-warning {
+      color: #ffebc7;
+      background: rgba(255, 209, 102, 0.16);
+      border-color: rgba(255, 209, 102, 0.3);
+    }
+
+    .sev-info {
+      color: #d3ecff;
+      background: rgba(102, 179, 255, 0.16);
+      border-color: rgba(102, 179, 255, 0.3);
+    }
+
+    .issue-panels {
+      display: grid;
+      gap: 10px;
+    }
+
+    details.panel {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: linear-gradient(160deg, rgba(15, 26, 41, 0.97), rgba(12, 22, 34, 0.97));
+      overflow: hidden;
+      animation: reveal 940ms ease both;
+    }
+
+    details.panel > summary {
+      list-style: none;
+      cursor: pointer;
+      padding: 11px 13px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid rgba(37, 66, 92, 0.7);
+      user-select: none;
+      font-weight: 700;
+    }
+
+    details.panel > summary::-webkit-details-marker {
+      display: none;
+    }
+
+    .panel-count {
+      color: var(--muted);
+      font-size: 0.87rem;
+      font-weight: 600;
+    }
+
+    .issue-list {
+      display: grid;
+      gap: 8px;
+      padding: 10px;
+    }
+
+    .issue {
+      border: 1px solid #2b4e6f;
+      border-radius: 10px;
+      padding: 10px;
+      background: #101d2f;
+      display: grid;
+      gap: 8px;
+    }
+
+    .issue-top {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .issue-message {
+      font-family: var(--mono);
+      font-size: 0.86rem;
+      color: #d9e7ff;
+      white-space: pre-wrap;
+      word-break: break-word;
+      line-height: 1.35;
+    }
+
+    .issue-meta {
+      color: var(--muted);
+      font-size: 0.83rem;
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .mini-btn {
+      border-radius: 8px;
+      padding: 5px 8px;
+      font-size: 0.78rem;
+      background: #143250;
+      border: 1px solid #2f6c97;
+    }
+
+    .context-box {
+      border: 1px solid #2b4d6e;
+      border-radius: 9px;
+      background: #0d1827;
+      padding: 8px;
+      max-height: 260px;
+      overflow: auto;
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      white-space: pre;
+      line-height: 1.35;
+      color: #c2d8f7;
+    }
+
+    .status {
+      color: var(--muted);
+      font-size: 0.88rem;
+      min-height: 20px;
+    }
+
+    .footer {
+      color: #8ea8cb;
+      font-size: 0.84rem;
+      text-align: center;
+      margin-top: 8px;
+    }
+
+    .modal {
+      position: fixed;
+      inset: 0;
+      background: rgba(5, 10, 16, 0.68);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 40;
+      padding: 16px;
+    }
+
+    .modal.open {
+      display: flex;
+    }
+
+    .modal-card {
+      width: min(680px, 96vw);
+      background: linear-gradient(160deg, #122139, #0f1a2e);
+      border: 1px solid #31577e;
+      border-radius: 14px;
+      padding: 16px;
+      box-shadow: var(--shadow);
+      display: grid;
+      gap: 12px;
+    }
+
+    .modal-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .setting {
+      display: grid;
+      gap: 6px;
+    }
+
+    .setting label {
+      color: #c8dbf7;
+      font-size: 0.88rem;
+      font-weight: 600;
+    }
+
+    .setting small {
+      color: var(--muted);
+      font-size: 0.78rem;
+      margin-top: -2px;
+    }
+
+    .progress-wrap {
+      width: 100%;
+      height: 8px;
+      border-radius: 999px;
+      background: #0f1c2e;
+      border: 1px solid #284664;
+      overflow: hidden;
+    }
+
+    .progress {
+      width: 0;
+      height: 100%;
+      background: linear-gradient(90deg, #27b0c0, #ffa95a);
+      transition: width 120ms linear;
+    }
+
+    @media (max-width: 900px) {
+      .dashboard {
+        grid-template-columns: repeat(2, minmax(120px, 1fr));
+      }
+
+      .tools {
+        grid-template-columns: 1fr;
+      }
+
+      .grid-2 {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 520px) {
+      .app {
+        width: 96vw;
+        margin-top: 12px;
+      }
+
+      .header {
+        padding: 12px;
+      }
+
+      .dropzone {
+        padding: 14px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="stars" aria-hidden="true"></div>
+
+  <div class="app">
+    <section class="header">
+      <div>
+        <h1>KSP Log Analyzer</h1>
+        <div class="subtitle">Client-side parser for KSP.log with crash diagnosis, mod conflict detection, and actionable fixes.</div>
+      </div>
+      <div class="header-buttons">
+        <button id="openSettingsBtn">Settings</button>
+        <button id="copyReportBtn" disabled>Copy Full Report</button>
+      </div>
+    </section>
+
+    <section class="dropzone" id="dropzone" aria-label="Drop KSP log file here">
+      <div class="drop-title">Drop KSP.log here or choose a file</div>
+      <div class="drop-note">All analysis runs locally in your browser. Nothing is uploaded.</div>
+      <div>
+        <input id="fileInput" type="file" accept=".log,.txt" style="display:none" />
+        <button class="primary" id="pickFileBtn">Choose Log File</button>
+      </div>
+      <div class="progress-wrap" aria-hidden="true"><div class="progress" id="progressBar"></div></div>
+      <div class="status" id="statusText">Waiting for input...</div>
+    </section>
+
+    <section class="dashboard" aria-live="polite">
+      <div class="card"><div class="label">Exceptions</div><div class="value red" id="sumExceptions">0</div></div>
+      <div class="card"><div class="label">Errors</div><div class="value red" id="sumErrors">0</div></div>
+      <div class="card"><div class="label">Warnings</div><div class="value yellow" id="sumWarnings">0</div></div>
+      <div class="card"><div class="label">Crash Signals</div><div class="value orange" id="sumCrash">0</div></div>
+      <div class="card"><div class="label">Verdict</div><div class="value cyan" id="sumVerdict">No Data</div></div>
+    </section>
+
+    <section class="tools">
+      <input id="searchInput" class="input" type="text" placeholder="Search issues by keyword, exception, mod name, assembly, part..." />
+      <select id="categoryFilter">
+        <option value="all">All categories</option>
+      </select>
+      <select id="severityFilter">
+        <option value="all">All severities</option>
+        <option value="critical">Critical</option>
+        <option value="error">Error</option>
+        <option value="warning">Warning</option>
+        <option value="info">Info</option>
+      </select>
+      <button id="resetFiltersBtn">Reset Filters</button>
+    </section>
+
+    <section class="diag" id="diagnosisPanel">
+      <h2>Crash Diagnosis</h2>
+      <p id="diagnosisSummary">Load a log to generate a probable root cause and remediation steps.</p>
+      <ul id="diagnosisActions"></ul>
+    </section>
+
+    <section class="issue-panels" id="issuePanels"></section>
+
+    <div class="footer">KSP patterns included: Unity exceptions/errors, ModuleManager, Harmony, B9PartSwitch, missing assets, load conflicts, and performance signals.</div>
+  </div>
+
+  <div class="modal" id="settingsModal" role="dialog" aria-modal="true" aria-label="Analyzer settings">
+    <div class="modal-card">
+      <div class="modal-head">
+        <h2 style="margin:0; font-size:1.05rem;">Settings</h2>
+        <button id="closeSettingsBtn">Close</button>
+      </div>
+
+      <div class="grid-2">
+        <div class="setting">
+          <label for="kspInstallPath">KSP Install Path</label>
+          <input id="kspInstallPath" class="input" type="text" placeholder="e.g. D:/Games/KSP" />
+          <small>Used for context-aware path matching in missing assets and mod load errors.</small>
+        </div>
+
+        <div class="setting">
+          <label for="kspDataPath">GameData / Mods Path</label>
+          <input id="kspDataPath" class="input" type="text" placeholder="e.g. D:/Games/KSP/GameData" />
+          <small>Improves hints for mod conflicts and duplicate assemblies.</small>
+        </div>
+
+        <div class="setting">
+          <label for="sensitivity">Parsing Sensitivity</label>
+          <select id="sensitivity">
+            <option value="low">Low (fewer matches)</option>
+            <option value="normal">Normal</option>
+            <option value="high">High (more aggressive)</option>
+          </select>
+          <small>Controls broadness of warning/performance matching.</small>
+        </div>
+
+        <div class="setting">
+          <label for="contextLines">Context Lines Around Issue</label>
+          <select id="contextLines">
+            <option value="2">2 lines</option>
+            <option value="3">3 lines</option>
+            <option value="4">4 lines</option>
+            <option value="5">5 lines</option>
+          </select>
+          <small>Applied to new analyses automatically.</small>
+        </div>
+
+        <div class="setting">
+          <label for="maxContexts">Max Context Blocks Per Deduped Issue</label>
+          <select id="maxContexts">
+            <option value="1">1</option>
+            <option value="2">2</option>
+            <option value="3">3</option>
+            <option value="4">4</option>
+            <option value="5">5</option>
+          </select>
+          <small>Limits memory use on very large logs.</small>
+        </div>
+
+        <div class="setting">
+          <label for="openPanelsByDefault">Issue Panels Default</label>
+          <select id="openPanelsByDefault">
+            <option value="true">Expanded</option>
+            <option value="false">Collapsed</option>
+          </select>
+          <small>Affects rendering state only.</small>
+        </div>
+      </div>
+
+      <div style="display:flex; gap:10px; justify-content:flex-end; flex-wrap:wrap;">
+        <button id="resetSettingsBtn">Reset Defaults</button>
+        <button class="primary" id="saveSettingsBtn">Save Settings</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      "use strict";
+
+      const STORAGE_KEY = "kspLogAnalyzerSettings.v1";
+      const DEFAULT_SETTINGS = {
+        kspInstallPath: "",
+        kspDataPath: "",
+        sensitivity: "normal",
+        contextLines: 3,
+        maxContexts: 3,
+        openPanelsByDefault: true
+      };
+
+      const CATEGORY_META = {
+        crash_indicators: { label: "Crash Indicators", severity: "critical" },
+        exceptions: { label: "Exceptions", severity: "error" },
+        errors: { label: "Errors", severity: "error" },
+        mod_conflicts: { label: "Mod Conflicts", severity: "error" },
+        missing_assets: { label: "Missing Assets", severity: "warning" },
+        performance_issues: { label: "Performance Issues", severity: "info" },
+        warnings: { label: "Warnings", severity: "warning" }
+      };
+
+      const CATEGORY_ORDER = [
+        "crash_indicators",
+        "exceptions",
+        "errors",
+        "mod_conflicts",
+        "missing_assets",
+        "performance_issues",
+        "warnings"
+      ];
+
+      const state = {
+        settings: loadSettings(),
+        issues: [],
+        totals: {
+          exceptions: 0,
+          errors: 0,
+          warnings: 0,
+          crash_indicators: 0
+        },
+        diagnosis: { verdict: "No Data", summary: "", actions: [] },
+        fileName: "",
+        lineCount: 0,
+        worker: null
+      };
+
+      const el = {
+        dropzone: document.getElementById("dropzone"),
+        fileInput: document.getElementById("fileInput"),
+        pickFileBtn: document.getElementById("pickFileBtn"),
+        statusText: document.getElementById("statusText"),
+        progressBar: document.getElementById("progressBar"),
+
+        sumExceptions: document.getElementById("sumExceptions"),
+        sumErrors: document.getElementById("sumErrors"),
+        sumWarnings: document.getElementById("sumWarnings"),
+        sumCrash: document.getElementById("sumCrash"),
+        sumVerdict: document.getElementById("sumVerdict"),
+
+        diagnosisSummary: document.getElementById("diagnosisSummary"),
+        diagnosisActions: document.getElementById("diagnosisActions"),
+
+        issuePanels: document.getElementById("issuePanels"),
+        searchInput: document.getElementById("searchInput"),
+        categoryFilter: document.getElementById("categoryFilter"),
+        severityFilter: document.getElementById("severityFilter"),
+        resetFiltersBtn: document.getElementById("resetFiltersBtn"),
+        copyReportBtn: document.getElementById("copyReportBtn"),
+
+        openSettingsBtn: document.getElementById("openSettingsBtn"),
+        settingsModal: document.getElementById("settingsModal"),
+        closeSettingsBtn: document.getElementById("closeSettingsBtn"),
+        saveSettingsBtn: document.getElementById("saveSettingsBtn"),
+        resetSettingsBtn: document.getElementById("resetSettingsBtn"),
+        kspInstallPath: document.getElementById("kspInstallPath"),
+        kspDataPath: document.getElementById("kspDataPath"),
+        sensitivity: document.getElementById("sensitivity"),
+        contextLines: document.getElementById("contextLines"),
+        maxContexts: document.getElementById("maxContexts"),
+        openPanelsByDefault: document.getElementById("openPanelsByDefault")
+      };
+
+      init();
+
+      function init() {
+        applySettingsToUi();
+        setupCategoryFilter();
+        wireEvents();
+        render();
+      }
+
+      function wireEvents() {
+        el.pickFileBtn.addEventListener("click", () => el.fileInput.click());
+
+        el.fileInput.addEventListener("change", (event) => {
+          const file = event.target.files && event.target.files[0];
+          if (file) analyzeFile(file);
+          event.target.value = "";
+        });
+
+        ["dragenter", "dragover"].forEach((evt) => {
+          el.dropzone.addEventListener(evt, (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            el.dropzone.classList.add("active");
+          });
+        });
+
+        ["dragleave", "drop"].forEach((evt) => {
+          el.dropzone.addEventListener(evt, (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            el.dropzone.classList.remove("active");
+          });
+        });
+
+        el.dropzone.addEventListener("drop", (event) => {
+          const files = event.dataTransfer && event.dataTransfer.files;
+          if (files && files[0]) analyzeFile(files[0]);
+        });
+
+        el.searchInput.addEventListener("input", renderIssuePanels);
+        el.categoryFilter.addEventListener("change", renderIssuePanels);
+        el.severityFilter.addEventListener("change", renderIssuePanels);
+
+        el.resetFiltersBtn.addEventListener("click", () => {
+          el.searchInput.value = "";
+          el.categoryFilter.value = "all";
+          el.severityFilter.value = "all";
+          renderIssuePanels();
+        });
+
+        el.copyReportBtn.addEventListener("click", async () => {
+          const report = buildFullReportText();
+          await copyText(report);
+          setStatus("Full report copied to clipboard.");
+        });
+
+        el.openSettingsBtn.addEventListener("click", () => {
+          applySettingsToUi();
+          el.settingsModal.classList.add("open");
+        });
+
+        el.closeSettingsBtn.addEventListener("click", () => el.settingsModal.classList.remove("open"));
+        el.settingsModal.addEventListener("click", (e) => {
+          if (e.target === el.settingsModal) el.settingsModal.classList.remove("open");
+        });
+
+        el.saveSettingsBtn.addEventListener("click", () => {
+          state.settings = readSettingsFromUi();
+          saveSettings(state.settings);
+          el.settingsModal.classList.remove("open");
+          setStatus("Settings saved. They will apply to the next log parse.");
+        });
+
+        el.resetSettingsBtn.addEventListener("click", () => {
+          state.settings = { ...DEFAULT_SETTINGS };
+          applySettingsToUi();
+          saveSettings(state.settings);
+          setStatus("Settings reset to defaults.");
+        });
+      }
+
+      function setupCategoryFilter() {
+        for (const key of CATEGORY_ORDER) {
+          const opt = document.createElement("option");
+          opt.value = key;
+          opt.textContent = CATEGORY_META[key].label;
+          el.categoryFilter.appendChild(opt);
+        }
+      }
+
+      function loadSettings() {
+        try {
+          const raw = localStorage.getItem(STORAGE_KEY);
+          if (!raw) return { ...DEFAULT_SETTINGS };
+          const parsed = JSON.parse(raw);
+          return {
+            ...DEFAULT_SETTINGS,
+            ...parsed,
+            contextLines: Number(parsed.contextLines || DEFAULT_SETTINGS.contextLines),
+            maxContexts: Number(parsed.maxContexts || DEFAULT_SETTINGS.maxContexts),
+            openPanelsByDefault: String(parsed.openPanelsByDefault) === "false" ? false : Boolean(parsed.openPanelsByDefault)
+          };
+        } catch (err) {
+          console.warn("Failed to load settings", err);
+          return { ...DEFAULT_SETTINGS };
+        }
+      }
+
+      function saveSettings(settings) {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+      }
+
+      function applySettingsToUi() {
+        const s = state.settings;
+        el.kspInstallPath.value = s.kspInstallPath;
+        el.kspDataPath.value = s.kspDataPath;
+        el.sensitivity.value = s.sensitivity;
+        el.contextLines.value = String(s.contextLines);
+        el.maxContexts.value = String(s.maxContexts);
+        el.openPanelsByDefault.value = String(Boolean(s.openPanelsByDefault));
+      }
+
+      function readSettingsFromUi() {
+        return {
+          kspInstallPath: el.kspInstallPath.value.trim(),
+          kspDataPath: el.kspDataPath.value.trim(),
+          sensitivity: el.sensitivity.value,
+          contextLines: Number(el.contextLines.value),
+          maxContexts: Number(el.maxContexts.value),
+          openPanelsByDefault: el.openPanelsByDefault.value === "true"
+        };
+      }
+
+      async function analyzeFile(file) {
+        if (!(file instanceof File)) return;
+
+        stopWorkerIfRunning();
+        resetAnalysisState();
+
+        state.fileName = file.name;
+        setStatus(`Analyzing ${file.name}...`);
+        el.progressBar.style.width = "0%";
+
+        state.worker = createParserWorker();
+
+        state.worker.onmessage = (event) => {
+          const data = event.data;
+          if (!data || typeof data !== "object") return;
+
+          if (data.type === "progress") {
+            const pct = Math.max(0, Math.min(100, Number(data.progress || 0)));
+            el.progressBar.style.width = pct.toFixed(1) + "%";
+            if (data.lines) {
+              setStatus(`Parsing... ${pct.toFixed(1)}% (${Number(data.lines).toLocaleString()} lines)`);
+            }
+            return;
+          }
+
+          if (data.type === "done") {
+            state.issues = data.issues || [];
+            state.totals = data.totals || state.totals;
+            state.lineCount = Number(data.lineCount || 0);
+            state.diagnosis = createDiagnosis(state.issues, state.totals, state.settings);
+
+            el.progressBar.style.width = "100%";
+            setStatus(`Done. Found ${state.issues.length.toLocaleString()} unique issues from ${state.lineCount.toLocaleString()} lines.`);
+            render();
+            stopWorkerIfRunning();
+            return;
+          }
+
+          if (data.type === "error") {
+            setStatus(`Parsing failed: ${data.message || "Unknown error"}`);
+            stopWorkerIfRunning();
+          }
+        };
+
+        state.worker.onerror = (err) => {
+          console.error("Worker error", err);
+          setStatus("Worker failed while parsing the file.");
+          stopWorkerIfRunning();
+        };
+
+        state.worker.postMessage({
+          type: "parse",
+          file,
+          settings: state.settings
+        });
+      }
+
+      function stopWorkerIfRunning() {
+        if (state.worker) {
+          state.worker.terminate();
+          state.worker = null;
+        }
+      }
+
+      function resetAnalysisState() {
+        state.issues = [];
+        state.totals = {
+          exceptions: 0,
+          errors: 0,
+          warnings: 0,
+          crash_indicators: 0
+        };
+        state.diagnosis = { verdict: "No Data", summary: "", actions: [] };
+        state.fileName = "";
+        state.lineCount = 0;
+        render();
+      }
+
+      function render() {
+        renderSummary();
+        renderDiagnosis();
+        renderIssuePanels();
+        el.copyReportBtn.disabled = state.issues.length === 0;
+      }
+
+      function renderSummary() {
+        el.sumExceptions.textContent = String(state.totals.exceptions || 0);
+        el.sumErrors.textContent = String(state.totals.errors || 0);
+        el.sumWarnings.textContent = String(state.totals.warnings || 0);
+        el.sumCrash.textContent = String(state.totals.crash_indicators || 0);
+        el.sumVerdict.textContent = state.diagnosis.verdict || "No Data";
+      }
+
+      function renderDiagnosis() {
+        el.diagnosisSummary.textContent = state.diagnosis.summary || "Load a log to generate a probable root cause and remediation steps.";
+        el.diagnosisActions.innerHTML = "";
+
+        const actions = state.diagnosis.actions || [];
+        if (!actions.length) {
+          const li = document.createElement("li");
+          li.textContent = "No actions yet. Analyze a log file to produce recommendations.";
+          el.diagnosisActions.appendChild(li);
+          return;
+        }
+
+        for (const action of actions) {
+          const li = document.createElement("li");
+          li.textContent = action;
+          el.diagnosisActions.appendChild(li);
+        }
+      }
+
+      function renderIssuePanels() {
+        const filtered = filterIssues(state.issues);
+        const byCategory = groupBy(filtered, (x) => x.category);
+        el.issuePanels.innerHTML = "";
+
+        for (const category of CATEGORY_ORDER) {
+          const issues = byCategory.get(category) || [];
+          const meta = CATEGORY_META[category];
+
+          const details = document.createElement("details");
+          details.className = "panel";
+          details.open = state.settings.openPanelsByDefault && issues.length > 0;
+
+          const summary = document.createElement("summary");
+          summary.innerHTML = `<span>${escapeHtml(meta.label)}</span><span class="panel-count">${issues.length.toLocaleString()} issue(s)</span>`;
+          details.appendChild(summary);
+
+          const list = document.createElement("div");
+          list.className = "issue-list";
+
+          if (!issues.length) {
+            const empty = document.createElement("div");
+            empty.className = "issue";
+            empty.textContent = "No issues matched current filters.";
+            list.appendChild(empty);
+          } else {
+            for (const issue of issues) {
+              list.appendChild(renderIssue(issue));
+            }
+          }
+
+          details.appendChild(list);
+          el.issuePanels.appendChild(details);
+        }
+      }
+
+      function renderIssue(issue) {
+        const item = document.createElement("article");
+        item.className = "issue";
+
+        const top = document.createElement("div");
+        top.className = "issue-top";
+
+        const left = document.createElement("div");
+        const sevClass = `sev-${issue.severity}`;
+        left.innerHTML = `<span class="badge ${sevClass}">${escapeHtml(issue.severity.toUpperCase())}</span><span class="issue-message">${escapeHtml(issue.message)}</span>`;
+
+        const right = document.createElement("div");
+        const copyBtn = document.createElement("button");
+        copyBtn.className = "mini-btn";
+        copyBtn.textContent = "Copy Issue";
+        copyBtn.addEventListener("click", async () => {
+          await copyText(buildIssueText(issue));
+          setStatus(`Copied issue from line ${issue.firstLine}.`);
+        });
+        right.appendChild(copyBtn);
+
+        top.appendChild(left);
+        top.appendChild(right);
+
+        const meta = document.createElement("div");
+        meta.className = "issue-meta";
+        meta.innerHTML = `<span>Line: ${issue.firstLine}</span><span>Occurrences: ${issue.count}</span><span>Category: ${escapeHtml(CATEGORY_META[issue.category].label)}</span>`;
+
+        item.appendChild(top);
+        item.appendChild(meta);
+
+        const contextDetails = document.createElement("details");
+        const contextSummary = document.createElement("summary");
+        contextSummary.textContent = `Context (${issue.contexts.length} block${issue.contexts.length > 1 ? "s" : ""})`;
+        contextDetails.appendChild(contextSummary);
+
+        for (const block of issue.contexts) {
+          const box = document.createElement("div");
+          box.className = "context-box";
+          box.textContent = block.text;
+          contextDetails.appendChild(box);
+        }
+
+        item.appendChild(contextDetails);
+        return item;
+      }
+
+      function filterIssues(issues) {
+        const q = el.searchInput.value.trim().toLowerCase();
+        const cat = el.categoryFilter.value;
+        const sev = el.severityFilter.value;
+
+        return issues.filter((issue) => {
+          if (cat !== "all" && issue.category !== cat) return false;
+          if (sev !== "all" && issue.severity !== sev) return false;
+
+          if (!q) return true;
+
+          const hay = [
+            issue.message,
+            CATEGORY_META[issue.category].label,
+            ...(issue.contexts || []).map((c) => c.text)
+          ].join("\n").toLowerCase();
+
+          return hay.includes(q);
+        });
+      }
+
+      function createDiagnosis(issues, totals, settings) {
+        if (!issues.length) {
+          return {
+            verdict: "No Issues",
+            summary: "No known high-confidence error patterns were detected.",
+            actions: [
+              "If the game still crashes, capture a fresh KSP.log immediately after crash.",
+              "Enable verbose logging for suspect mods and compare logs across launches."
+            ]
+          };
+        }
+
+        const top = rankLikelyCause(issues);
+        const verdict = top && top.severity === "critical" ? "Likely Crash Cause Found" : "Needs Review";
+        const actions = buildActions(top, settings);
+
+        return {
+          verdict,
+          summary: buildDiagnosisSummary(top),
+          actions
+        };
+      }
+
+      function rankLikelyCause(issues) {
+        let best = null;
+
+        for (const issue of issues) {
+          let score = 0;
+
+          if (issue.category === "crash_indicators") score += 120;
+          if (issue.category === "exceptions") score += 85;
+          if (issue.category === "mod_conflicts") score += 80;
+          if (issue.category === "errors") score += 65;
+          if (issue.category === "missing_assets") score += 45;
+          if (issue.category === "performance_issues") score += 35;
+
+          const m = issue.message.toLowerCase();
+          if (m.includes("outofmemory") || m.includes("out of memory")) score += 110;
+          if (m.includes("stack overflow") || m.includes("stackoverflow")) score += 100;
+          if (m.includes("fatal") || m.includes("accessviolation")) score += 95;
+          if (m.includes("nullreferenceexception")) score += 55;
+          if (m.includes("modulermanager") || m.includes("modulemanager")) score += 28;
+          if (m.includes("harmony")) score += 24;
+          if (m.includes("b9partswitch")) score += 24;
+          if (m.includes("duplicate") || m.includes("already loaded")) score += 20;
+
+          score += Math.min(60, issue.count * 4);
+
+          if (!best || score > best.score) {
+            best = { ...issue, score };
+          }
+        }
+
+        return best;
+      }
+
+      function buildDiagnosisSummary(top) {
+        if (!top) {
+          return "A specific crash trigger could not be isolated with confidence.";
+        }
+
+        const categoryName = CATEGORY_META[top.category].label;
+
+        if (top.category === "mod_conflicts") {
+          return `Most probable crash source: mod conflict. A high-frequency ${categoryName.toLowerCase()} pattern points to incompatible or duplicate assemblies near line ${top.firstLine}.`;
+        }
+        if (top.category === "missing_assets") {
+          return `Most probable crash source: missing assets. Critical resources appear unresolved around line ${top.firstLine}, which can break part/module loading.`;
+        }
+        if (top.category === "performance_issues") {
+          return `Most probable crash source: memory/performance pressure. Repeated allocation or frame-time warnings suggest instability escalating toward failure.`;
+        }
+        if (top.category === "exceptions") {
+          return `Most probable crash source: unhandled exception. ${top.message.slice(0, 160)}${top.message.length > 160 ? "..." : ""}`;
+        }
+        if (top.category === "crash_indicators") {
+          return `Most probable crash source: explicit crash indicator. The log includes direct crash signatures around line ${top.firstLine}.`;
+        }
+
+        return `Most probable crash source: ${categoryName.toLowerCase()} near line ${top.firstLine}.`;
+      }
+
+      function buildActions(top, settings) {
+        const actions = [
+          "Reproduce the crash with the same mod set and compare the first critical line against this report.",
+          "Temporarily remove or update the mod(s) named in the top issue and retest.",
+          "If using many mods, bisect by disabling half of recently changed mods each run."
+        ];
+
+        if (!top) return actions;
+
+        const msg = top.message.toLowerCase();
+
+        if (msg.includes("outofmemory") || msg.includes("out of memory")) {
+          actions.unshift("Memory exhaustion detected: reduce texture-heavy mods, increase page file size, and avoid high-res packs during debugging.");
+        }
+
+        if (msg.includes("modulemanager") || msg.includes("patch")) {
+          actions.unshift("ModuleManager-related error detected: check patch ordering, duplicate patches, and ensure compatible MM version for this KSP build.");
+        }
+
+        if (msg.includes("harmony")) {
+          actions.unshift("Harmony patching conflict detected: verify all Harmony-dependent mods are on compatible versions and remove duplicate Harmony DLLs.");
+        }
+
+        if (msg.includes("b9partswitch")) {
+          actions.unshift("B9PartSwitch signature detected: verify part switch configs and dependent assets are present and version-aligned.");
+        }
+
+        if (settings.kspDataPath) {
+          actions.push(`Use your configured GameData path (${settings.kspDataPath}) to verify any referenced missing files or duplicate assemblies.`);
+        }
+
+        if (settings.kspInstallPath) {
+          actions.push(`Confirm KSP install integrity at ${settings.kspInstallPath} and re-validate core files before re-adding suspect mods.`);
+        }
+
+        return dedupeList(actions).slice(0, 7);
+      }
+
+      function dedupeList(arr) {
+        const out = [];
+        const seen = new Set();
+        for (const x of arr) {
+          const k = String(x).trim();
+          if (!k || seen.has(k)) continue;
+          seen.add(k);
+          out.push(k);
+        }
+        return out;
+      }
+
+      function buildIssueText(issue) {
+        const lines = [
+          `Category: ${CATEGORY_META[issue.category].label}`,
+          `Severity: ${issue.severity}`,
+          `Line: ${issue.firstLine}`,
+          `Occurrences: ${issue.count}`,
+          "Message:",
+          issue.message,
+          "",
+          "Context:",
+          ...(issue.contexts || []).flatMap((c, i) => [
+            `--- Block ${i + 1} ---`,
+            c.text
+          ])
+        ];
+
+        return lines.join("\n");
+      }
+
+      function buildFullReportText() {
+        const lines = [];
+        lines.push("KSP Log Analyzer Report");
+        lines.push("=======================");
+        lines.push(`File: ${state.fileName || "N/A"}`);
+        lines.push(`Total Lines: ${state.lineCount}`);
+        lines.push(`Unique Issues: ${state.issues.length}`);
+        lines.push("");
+
+        lines.push("Summary:");
+        lines.push(`- Exceptions: ${state.totals.exceptions || 0}`);
+        lines.push(`- Errors: ${state.totals.errors || 0}`);
+        lines.push(`- Warnings: ${state.totals.warnings || 0}`);
+        lines.push(`- Crash Indicators: ${state.totals.crash_indicators || 0}`);
+        lines.push(`- Verdict: ${state.diagnosis.verdict}`);
+        lines.push("");
+
+        lines.push("Diagnosis:");
+        lines.push(state.diagnosis.summary || "No diagnosis.");
+        lines.push("");
+        for (const action of state.diagnosis.actions || []) {
+          lines.push(`- ${action}`);
+        }
+        lines.push("");
+
+        for (const category of CATEGORY_ORDER) {
+          const subset = state.issues.filter((x) => x.category === category);
+          lines.push(`# ${CATEGORY_META[category].label} (${subset.length})`);
+          for (const issue of subset) {
+            lines.push("");
+            lines.push(buildIssueText(issue));
+          }
+          lines.push("");
+        }
+
+        return lines.join("\n");
+      }
+
+      async function copyText(text) {
+        try {
+          await navigator.clipboard.writeText(text);
+        } catch (err) {
+          const ta = document.createElement("textarea");
+          ta.value = text;
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand("copy");
+          document.body.removeChild(ta);
+        }
+      }
+
+      function setStatus(msg) {
+        el.statusText.textContent = msg;
+      }
+
+      function groupBy(items, keyFn) {
+        const m = new Map();
+        for (const item of items) {
+          const k = keyFn(item);
+          if (!m.has(k)) m.set(k, []);
+          m.get(k).push(item);
+        }
+        return m;
+      }
+
+      function escapeHtml(s) {
+        return String(s)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/\"/g, "&quot;")
+          .replace(/'/g, "&#39;");
+      }
+
+      function createParserWorker() {
+        const workerScript = String.raw`
+          self.onmessage = async function (event) {
+            try {
+              const data = event.data || {};
+              if (data.type !== "parse") return;
+
+              const file = data.file;
+              const settings = data.settings || {};
+              const result = await parseFile(file, settings);
+              self.postMessage({ type: "done", ...result });
+            } catch (err) {
+              self.postMessage({
+                type: "error",
+                message: err && err.message ? err.message : String(err)
+              });
+            }
+          };
+
+          async function parseFile(file, settings) {
+            const contextLines = Math.max(1, Math.min(8, Number(settings.contextLines || 3)));
+            const maxContexts = Math.max(1, Math.min(8, Number(settings.maxContexts || 3)));
+            const sensitivity = String(settings.sensitivity || "normal").toLowerCase();
+
+            const issueMap = new Map();
+            const pendingContexts = [];
+            const prevLines = [];
+            const totals = {
+              exceptions: 0,
+              errors: 0,
+              warnings: 0,
+              crash_indicators: 0
+            };
+
+            let carry = "";
+            let lineNo = 0;
+            let bytesRead = 0;
+            const totalBytes = file.size || 1;
+
+            const reader = file.stream().getReader();
+            const decoder = new TextDecoder("utf-8", { fatal: false });
+
+            while (true) {
+              const { value, done } = await reader.read();
+              if (done) break;
+
+              bytesRead += value.byteLength;
+              carry += decoder.decode(value, { stream: true });
+
+              const lines = carry.split(/\r?\n/);
+              carry = lines.pop() || "";
+
+              for (let i = 0; i < lines.length; i++) {
+                processLine(lines[i]);
+              }
+
+              if (lineNo % 20000 < lines.length) {
+                self.postMessage({
+                  type: "progress",
+                  progress: (bytesRead / totalBytes) * 100,
+                  lines: lineNo
+                });
+              }
+            }
+
+            carry += decoder.decode();
+            if (carry.length > 0) {
+              processLine(carry);
+            }
+
+            flushPending();
+
+            const issues = Array.from(issueMap.values())
+              .map((issue) => ({
+                id: issue.id,
+                key: issue.key,
+                category: issue.category,
+                severity: issue.severity,
+                message: issue.message,
+                firstLine: issue.firstLine,
+                count: issue.count,
+                contexts: issue.contexts
+              }))
+              .sort((a, b) => severityWeight(b.severity) - severityWeight(a.severity) || b.count - a.count || a.firstLine - b.firstLine);
+
+            return {
+              issues,
+              totals,
+              lineCount: lineNo
+            };
+
+            function processLine(line) {
+              lineNo++;
+              const text = String(line || "");
+
+              for (let i = 0; i < pendingContexts.length; i++) {
+                const p = pendingContexts[i];
+                if (p.remaining > 0) {
+                  p.lines.push(formatLine(lineNo, text));
+                  p.remaining--;
+                }
+              }
+
+              for (let i = pendingContexts.length - 1; i >= 0; i--) {
+                const p = pendingContexts[i];
+                if (p.remaining <= 0) {
+                  finalizeContext(p);
+                  pendingContexts.splice(i, 1);
+                }
+              }
+
+              const match = detectIssue(text, sensitivity);
+              if (match) {
+                const key = buildIssueKey(match.category, text);
+                let issue = issueMap.get(key);
+
+                if (!issue) {
+                  issue = {
+                    id: issueMap.size + 1,
+                    key,
+                    category: match.category,
+                    severity: match.severity,
+                    message: text.trim().slice(0, 2000),
+                    firstLine: lineNo,
+                    count: 0,
+                    contexts: []
+                  };
+                  issueMap.set(key, issue);
+                }
+
+                issue.count++;
+                bumpTotals(totals, match.category);
+
+                if (issue.contexts.length < maxContexts) {
+                  const blockLines = prevLines.slice(-contextLines).map((x) => x.text);
+                  blockLines.push(formatLine(lineNo, text));
+                  pendingContexts.push({
+                    issueKey: key,
+                    lines: blockLines,
+                    remaining: contextLines
+                  });
+                }
+              }
+
+              prevLines.push({
+                lineNo,
+                text: formatLine(lineNo, text)
+              });
+
+              if (prevLines.length > contextLines + 2) {
+                prevLines.shift();
+              }
+            }
+
+            function finalizeContext(pending) {
+              const issue = issueMap.get(pending.issueKey);
+              if (!issue) return;
+              issue.contexts.push({ text: pending.lines.join("\n") });
+            }
+
+            function flushPending() {
+              for (let i = 0; i < pendingContexts.length; i++) {
+                finalizeContext(pendingContexts[i]);
+              }
+              pendingContexts.length = 0;
+            }
+          }
+
+          function severityWeight(sev) {
+            if (sev === "critical") return 4;
+            if (sev === "error") return 3;
+            if (sev === "warning") return 2;
+            return 1;
+          }
+
+          function bumpTotals(totals, category) {
+            if (category === "exceptions") totals.exceptions++;
+            if (category === "errors" || category === "mod_conflicts") totals.errors++;
+            if (category === "warnings" || category === "missing_assets") totals.warnings++;
+            if (category === "crash_indicators") totals.crash_indicators++;
+          }
+
+          function formatLine(lineNo, text) {
+            return String(lineNo).padStart(7, " ") + " | " + text;
+          }
+
+          function buildIssueKey(category, rawLine) {
+            const normalized = String(rawLine || "")
+              .toLowerCase()
+              .replace(/\bline\s*\d+\b/g, "line #")
+              .replace(/0x[0-9a-f]+/g, "0x#")
+              .replace(/\b\d+\b/g, "#")
+              .replace(/[\\/][\w.\-]+/g, "/path")
+              .replace(/\s+/g, " ")
+              .trim()
+              .slice(0, 260);
+
+            return category + "::" + normalized;
+          }
+
+          function detectIssue(line, sensitivity) {
+            const t = String(line || "").trim();
+            if (!t) return null;
+
+            const crashRx = /(outofmemory|out of memory|stack overflow|stackoverflow|fatal (error|signal|exit)|accessviolationexception|segmentation fault|unity player has crashed|crash report|d3d11.*failed|fatal|application crash)/i;
+            const excRx = /((\w+)?Exception\b|NullReferenceException|IndexOutOfRangeException|MissingReferenceException|InvalidOperationException|ArgumentException|KeyNotFoundException)/i;
+            const modConflictRx = /(duplicate( assembly| dll)?|already loaded|version mismatch|incompatible mod|could not load file or assembly|dependency.*missing|modul(e)?manager.*(error|exception|patch)|harmony.*(failed|error|conflict)|b9partswitch.*(error|exception))/i;
+            const missingAssetRx = /(not found|missing (part|texture|config|asset)|failed to load (part|texture|asset|bundle)|cannot find partmodule|shader .* not found|could not find .*(cfg|png|dds|mu))/i;
+            const perfRx = /(gc alloc|garbage collector|frame time|took .*ms|stall|stutter|too many heap sections|allocation failed|slow update loop)/i;
+            const errorRx = /(\[ERR\]|\[EXC\]|\berror:\b|\bFATAL\b|\berror\b)/i;
+            const warnRx = /(\[WRN\]|\bWarning:\b|\bWARN\b)/i;
+
+            if (crashRx.test(t)) return { category: "crash_indicators", severity: "critical" };
+            if (excRx.test(t)) return { category: "exceptions", severity: "error" };
+            if (modConflictRx.test(t)) return { category: "mod_conflicts", severity: "error" };
+            if (missingAssetRx.test(t)) return { category: "missing_assets", severity: "warning" };
+            if (perfRx.test(t)) return { category: "performance_issues", severity: sensitivity === "high" ? "warning" : "info" };
+            if (errorRx.test(t)) return { category: "errors", severity: "error" };
+
+            if (warnRx.test(t)) {
+              if (sensitivity === "low" && !/\[(WRN|WARNING)\]/i.test(t)) return null;
+              return { category: "warnings", severity: "warning" };
+            }
+
+            if (sensitivity === "high") {
+              if (/exception in/.test(t.toLowerCase())) {
+                return { category: "exceptions", severity: "error" };
+              }
+            }
+
+            return null;
+          }
+        `;
+
+        const blob = new Blob([workerScript], { type: "text/javascript" });
+        const workerUrl = URL.createObjectURL(blob);
+        const worker = new Worker(workerUrl);
+        URL.revokeObjectURL(workerUrl);
+        return worker;
+      }
+    })();
+  </script>
+</body>
+</html>
